@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIDI Patterns Generator</title>
+    <script src="https://cdn.jsdelivr.net/combine/npm/tone@14.7.58,npm/@magenta/music@1.23.1/es6/core.js,npm/focus-visible@5,npm/html-midi-player@1.5.0"></script>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 16px;
+            font-weight: normal;
+            margin-bottom: 20px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, select {
+            width: 100%;
+            padding: 4px;
+            font-family: monospace;
+            border: 1px solid black;
+            box-sizing: border-box;
+        }
+        button, .file-button {
+            padding: 8px 16px;
+            font-family: monospace;
+            border: 1px solid black;
+            background: white;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 5px;
+            display: inline-block;
+            text-align: center;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #preview {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid black;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            display: none;
+        }
+        .pattern-block {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid black;
+        }
+        .pattern-header {
+            font-size: 14px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pattern-controls {
+            display: flex;
+            gap: 5px;
+        }
+        .pattern-controls button {
+            padding: 4px 8px;
+            font-size: 12px;
+            margin: 0;
+        }
+        .track-container {
+            margin-bottom: 10px;
+        }
+        .track-input {
+            position: relative;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+        }
+        .track-controls {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 5px;
+        }
+        .track-controls button {
+            padding: 2px 6px;
+            font-size: 11px;
+            margin: 0;
+        }
+        #player-container {
+            margin-top: 30px;
+            display: none;
+        }
+        /* Custom visualizer style */
+        midi-visualizer .piano-roll-visualizer {
+            background: #fafafa;
+            border: 2px solid black;
+            border-radius: 5px;
+            margin: 10px 0;
+            overflow: auto;
+        }
+        midi-visualizer svg rect.note {
+            opacity: 0.6;
+            stroke-width: 2;
+        }
+        midi-visualizer svg rect.note[data-instrument="0"]{
+            fill: #e74c3c;
+            stroke: #c0392b;
+        }
+        midi-visualizer svg rect.note[data-instrument="1"]{
+            fill: #3498db;
+            stroke: #2980b9;
+        }
+        midi-visualizer svg rect.note[data-instrument="2"]{
+            fill: #2ecc71;
+            stroke: #27ae60;
+        }
+        midi-visualizer svg rect.note[data-instrument="3"]{
+            fill: #f39c12;
+            stroke: #e67e22;
+        }
+        midi-visualizer svg rect.note[data-instrument="4"]{
+            fill: #9b59b6;
+            stroke: #8e44ad;
+        }
+        midi-visualizer svg rect.note[data-instrument="5"]{
+            fill: #1abc9c;
+            stroke: #16a085;
+        }
+        midi-visualizer svg rect.note[data-instrument="6"]{
+            fill: #e67e22;
+            stroke: #d35400;
+        }
+        midi-visualizer svg rect.note.active {
+            opacity: 0.9;
+            stroke: #000;
+        }
+    </style>
+</head>
+<body>
+    <h1>MIDI Patterns Generator</h1>
+    
+    <div class="input-group">
+        <label>Tempo:</label>
+        <input type="text" id="tempo" value="120">
+    </div>
+
+    <button onclick="resetToEmpty()">Reset to Empty</button>
+
+    <div id="patterns-container" style="margin-top: 20px;">
+        <div class="pattern-block" data-pattern-id="0">
+            <div class="pattern-header">
+                <span>Pattern 1</span>
+                <div class="pattern-controls">
+                    <button onclick="movePatternUp(this)">↑</button>
+                    <button onclick="movePatternDown(this)">↓</button>
+                    <button onclick="duplicatePattern(this)">Copy</button>
+                    <button onclick="deletePattern(this)">X</button>
+                </div>
+            </div>
+            
+            <div class="track-container" data-tracks="3">
+                <div class="track-input">
+                    <div class="track-controls">
+                        <button onclick="moveTrackUp(this)">↑</button>
+                        <button onclick="moveTrackDown(this)">↓</button>
+                        <button onclick="duplicateTrack(this)">Copy</button>
+                        <button onclick="deleteTrack(this)">X</button>
+                    </div>
+                    <label>Track 1:</label>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <input type="text" class="track-pattern" value="" style="width: auto; flex-grow: 1;">
+                        <button onclick="transposeTrack(this, 1)" style="padding: 4px 8px; font-size: 12px; margin: 0; flex-shrink: 0;">(+)</button>
+                        <button onclick="transposeTrack(this, -1)" style="padding: 4px 8px; font-size: 12px; margin: 0; flex-shrink: 0;">(-)</button>
+                    </div>
+                    <label style="margin-top: 5px;">Duration:</label>
+                    <input type="text" class="track-duration" value="4">
+                    <label style="margin-top: 5px;">Octave:</label>
+                    <select class="track-octave">
+                        <option value="0">C0</option>
+                        <option value="1">C1</option>
+                        <option value="2">C2</option>
+                        <option value="3" selected>C3</option>
+                        <option value="4">C4</option>
+                        <option value="5">C5</option>
+                        <option value="6">C6</option>
+                        <option value="7">C7</option>
+                        <option value="8">C8</option>
+                        <option value="9">C9</option>
+                        <option value="10">C10</option>
+                    </select>
+                    <label style="margin-top: 5px;">Key:</label>
+                    <select class="track-key">
+                        <option value="C" selected>C</option>
+                        <option value="C#">C#</option>
+                        <option value="D">D</option>
+                        <option value="D#">D#</option>
+                        <option value="E">E</option>
+                        <option value="F">F</option>
+                        <option value="F#">F#</option>
+                        <option value="G">G</option>
+                        <option value="G#">G#</option>
+                        <option value="A">A</option>
+                        <option value="A#">A#</option>
+                        <option value="B">B</option>
+                    </select>
+                    <label style="margin-top: 5px;">Mode:</label>
+                    <select class="track-mode">
+                        <option value="Ionian" selected>Ionian</option>
+                        <option value="Dorian">Dorian</option>
+                        <option value="Phrygian">Phrygian</option>
+                        <option value="Lydian">Lydian</option>
+                        <option value="Mixolydian">Mixolydian</option>
+                        <option value="Aeolian">Aeolian</option>
+                        <option value="Locrian">Locrian</option>
+                    </select>
+                </div>
+                <div class="track-input">
+                    <div class="track-controls">
+                        <button onclick="moveTrackUp(this)">↑</button>
+                        <button onclick="moveTrackDown(this)">↓</button>
+                        <button onclick="duplicateTrack(this)">Copy</button>
+                        <button onclick="deleteTrack(this)">X</button>
+                    </div>
+                    <label>Track 2:</label>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <input type="text" class="track-pattern" value="" style="width: auto; flex-grow: 1;">
+                        <button onclick="transposeTrack(this, 1)" style="padding: 4px 8px; font-size: 12px; margin: 0; flex-shrink: 0;">(+)</button>
+                        <button onclick="transposeTrack(this, -1)" style="padding: 4px 8px; font-size: 12px; margin: 0; flex-shrink: 0;">(-)</button>
+                    </div>
+                    <label style="margin-top: 5px;">Duration:</label>
+                    <input type="text" class="track-duration" value="4">
+                    <label style="margin-top: 5px;">Octave:</label>
+                    <select class="track-octave">
+                        <option value="0">C0</option>
+                        <option value="1">C1</option>
+                        <option value="2">C2</option>
+                        <option value="3">C3</option>
+                        <option value="4" selected>C4</option>
+                        <option value="5">C5</option>
+                        <option value="6">C6</option>
+                        <option value="7">C7</option>
+                        <option value="8">C8</option>
+                        <option value="9">C9</option>
+                        <option value="10">C10</option>
+                    </select>
+                    <label style="margin-top: 5px;">Key:</label>
+                    <select class="track-key">
+                        <option value="C" selected>C</option>
+                        <option value="C#">C#</option>
+                        <option value="D">D</option>
+                        <option value="D#">D#</option>
+                        <option value="E">E</option>
+                        <option value="F">F</option>
+                        <option value="F#">F#</option>
+                        <option value="G">G</option>
+                        <option value="G#">G#</option>
+                        <option value="A">A</option>
+                        <option value="A#">A#</option>
+                        <option value="B">B</option>
+                    </select>
+                    <label style="margin-top: 5px;">Mode:</label>
+                    <select class="track-mode">
+                        <option value="Ionian" selected>Ionian</option>
+                        <option value="Dorian">Dorian</option>
+                        <option value="Phrygian">Phrygian</option>
+                        <option value="Lydian">Lydian</option>
+                        <option value="Mixolydian">Mixolydian</option>
+                        <option value="Aeolian">Aeolian</option>
+                        <option value="Locrian">Locrian</option>
+                    </select>
+                </div>
+                <div class="track-input">
+                    <div class="track-controls">
+                        <button onclick="moveTrackUp(this)">↑</button>
+                        <button onclick="moveTrackDown(this)">↓</button>
+                        <button onclick="duplicateTrack(this)">Copy</button>
+                        <button onclick="deleteTrack(this)">X</button>
+                    </div>
+                    <label>Track 3:</label>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <input type="text" class="track-pattern" value="" style="width: auto; flex-grow: 1;">
+                        <button onclick="transposeTrack(this, 1)" style="padding: 4px 8px; font-size: 12px; margin: 0; flex-shrink: 0;">(+)</button>
+                        <button onclick="transposeTrack(this, -1)" style="padding: 4px 8px; font-size: 12px; margin: 0; flex-shrink: 0;">(-)</button>
+                    </div>
+                    <label style="margin-top: 5px;">Duration:</label>
+                    <input type="text" class="track-duration" value="4">
+                    <label style="margin-top: 5px;">Octave:</label>
+                    <select class="track-octave">
+                        <option value="0">C0</option>
+                        <option value="1">C1</option>
+                        <option value="2">C2</option>
+                        <option value="3">C3</option>
+                        <option value="4">C4</option>
+                        <option value="5" selected>C5</option>
+                        <option value="6">C6</option>
+                        <option value="7">C7</option>
+                        <option value="8">C8</option>
+                        <option value="9">C9</option>
+                        <option value="10">C10</option>
+                    </select>
+                    <label style="margin-top: 5px;">Key:</label>
+                    <select class="track-key">
+                        <option value="C" selected>C</option>
+                        <option value="C#">C#</option>
+                        <option value="D">D</option>
+                        <option value="D#">D#</option>
+                        <option value="E">E</option>
+                        <option value="F">F</option>
+                        <option value="F#">F#</option>
+                        <option value="G">G</option>
+                        <option value="G#">G#</option>
+                        <option value="A">A</option>
+                        <option value="A#">A#</option>
+                        <option value="B">B</option>
+                    </select>
+                    <label style="margin-top: 5px;">Mode:</label>
+                    <select class="track-mode">
+                        <option value="Ionian" selected>Ionian</option>
+                        <option value="Dorian">Dorian</option>
+                        <option value="Phrygian">Phrygian</option>
+                        <option value="Lydian">Lydian</option>
+                        <option value="Mixolydian">Mixolydian</option>
+                        <option value="Aeolian">Aeolian</option>
+                        <option value="Locrian">Locrian</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-bottom: 10px;">
+                <button class="add-track-btn" onclick="addTrack(this)">Add Track</button>
+            </div>
+
+            <div class="input-group">
+                <label>Section:</label>
+                <input type="text" class="section" value="">
+            </div>
+
+            <div class="input-group">
+                <label>Pattern Key:</label>
+                <select class="pattern-key" onchange="updateTrackKeys(this)">
+                    <option value="C" selected>C</option>
+                    <option value="C#">C#</option>
+                    <option value="D">D</option>
+                    <option value="D#">D#</option>
+                    <option value="E">E</option>
+                    <option value="F">F</option>
+                    <option value="F#">F#</option>
+                    <option value="G">G</option>
+                    <option value="G#">G#</option>
+                    <option value="A">A</option>
+                    <option value="A#">A#</option>
+                    <option value="B">B</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>Pattern Mode:</label>
+                <select class="pattern-mode" onchange="updateTrackKeys(this)">
+                    <option value="Ionian" selected>Ionian</option>
+                    <option value="Dorian">Dorian</option>
+                    <option value="Phrygian">Phrygian</option>
+                    <option value="Lydian">Lydian</option>
+                    <option value="Mixolydian">Mixolydian</option>
+                    <option value="Aeolian">Aeolian</option>
+                    <option value="Locrian">Locrian</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 15px;">
+        <button onclick="addPattern()">Add Pattern</button>
+    </div>
+
+    <div class="input-group">
+        <label>File Name:</label>
+        <input type="text" id="filename" value="pattern">
+    </div>
+
+    <div>
+        <button onclick="generateMIDI()">Generate MIDI</button>
+        <button id="viewAsciiBtn" onclick="toggleASCII()">View ASCII</button>
+        <button id="downloadBtn" onclick="downloadMIDI()" disabled>Download MIDI</button>
+        <button onclick="exportToTxt()">Export to TXT</button>
+        <label for="file-import" class="file-button">Import from TXT</label>
+        <input type="file" id="file-import" onchange="importFromTxt(event)" accept=".txt" style="display: none;">
+    </div>
+
+    <div id="preview"></div>
+
+    <div id="player-container">
+        <h2 style="font-size: 14px; font-weight: normal; margin: 20px 0 10px 0;"></h2>
+        <midi-player id="midiPlayer" sound-font visualizer="#myPianoRollVisualizer"></midi-player>
+        <midi-visualizer type="piano-roll" id="myPianoRollVisualizer"></midi-visualizer>
+    </div>
+
+    <script>
+        let midiData = null;
+        let patternCount = 1; // Start with 1 pattern on load
+        let asciiVisible = false;
+        
+        const modes = {
+            'Ionian': [0, 2, 4, 5, 7, 9, 11],
+            'Dorian': [0, 2, 3, 5, 7, 9, 10],
+            'Phrygian': [0, 1, 3, 5, 7, 8, 10],
+            'Lydian': [0, 2, 4, 6, 7, 9, 11],
+            'Mixolydian': [0, 2, 4, 5, 7, 9, 10],
+            'Aeolian': [0, 2, 3, 5, 7, 8, 10],
+            'Locrian': [0, 1, 3, 5, 6, 8, 10]
+        };
+        
+        const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+        // Run on load to set initial state
+        document.addEventListener('DOMContentLoaded', () => {
+            // The initial HTML already has 1 pattern with 3 tracks.
+            // We just need to ensure patternCount reflects this.
+            patternCount = document.querySelectorAll('.pattern-block').length;
+        });
+
+        function resetToEmpty() {
+            document.getElementById('tempo').value = '120';
+            document.getElementById('filename').value = 'pattern';
+            
+            const container = document.getElementById('patterns-container');
+            container.innerHTML = ''; // Clear all patterns
+            patternCount = 0; // Reset count
+            
+            addPattern(); // Add a new "Pattern 1"
+            
+            const firstPattern = document.querySelector('.pattern-block');
+            const addTrackBtn = firstPattern.querySelector('.add-track-btn');
+            
+            // addPattern adds one track, so we add two more
+            addTrack(addTrackBtn);
+            addTrack(addTrackBtn);
+            
+            // Set defaults for the new empty state
+            firstPattern.querySelector('.pattern-key').value = 'C';
+            firstPattern.querySelector('.pattern-mode').value = 'Ionian';
+            
+            const tracks = firstPattern.querySelectorAll('.track-input');
+            
+            // Track 1
+            tracks[0].querySelector('.track-pattern').value = '';
+            tracks[0].querySelector('.track-duration').value = '4';
+            tracks[0].querySelector('.track-octave').value = '3';
+            
+            // Track 2
+            tracks[1].querySelector('.track-pattern').value = '';
+            tracks[1].querySelector('.track-duration').value = '4';
+            tracks[1].querySelector('.track-octave').value = '4';
+            
+            // Track 3
+            tracks[2].querySelector('.track-pattern').value = '';
+            tracks[2].querySelector('.track-duration').value = '4';
+            tracks[2].querySelector('.track-octave').value = '5';
+            
+            // Sync all track keys/modes to the pattern default
+            updateTrackKeys(firstPattern.querySelector('.pattern-key'));
+            // Fix track labels (Track 1, Track 2, Track 3)
+            updateTrackLabels(firstPattern);
+        }
+
+        function toggleASCII() {
+            const previewDiv = document.getElementById('preview');
+            const btn = document.getElementById('viewAsciiBtn');
+            
+            if (asciiVisible) {
+                previewDiv.style.display = 'none';
+                btn.textContent = 'View ASCII';
+                asciiVisible = false;
+            } else {
+                previewASCII();
+                previewDiv.style.display = 'block';
+                btn.textContent = 'Hide ASCII';
+                asciiVisible = true;
+            }
+        }
+
+        function updateTrackKeys(selectElement) {
+            const patternBlock = selectElement.closest('.pattern-block');
+            const patternKey = patternBlock.querySelector('.pattern-key').value;
+            const patternMode = patternBlock.querySelector('.pattern-mode').value;
+            
+            const trackKeySelects = patternBlock.querySelectorAll('.track-key');
+            const trackModeSelects = patternBlock.querySelectorAll('.track-mode');
+            
+            trackKeySelects.forEach(select => {
+                select.value = patternKey;
+            });
+            
+            trackModeSelects.forEach(select => {
+                select.value = patternMode;
+            });
+        }
+
+        function calculateOctave(trackIndex, totalTracks) {
+            return 4 - Math.floor((totalTracks - 1) / 2) + trackIndex;
+        }
+
+        function updateTrackLabels(patternBlock) {
+            const trackContainer = patternBlock.querySelector('.track-container');
+            const trackInputs = trackContainer.querySelectorAll('.track-input');
+            
+            trackInputs.forEach((input, index) => {
+                // Find the first label, which is the track label
+                const label = input.querySelector('label');
+                label.textContent = `Track ${index + 1}:`;
+            });
+        }
+
+        function updateAllTrackLabels() {
+            document.querySelectorAll('.pattern-block').forEach(updateTrackLabels);
+        }
+
+        function updatePatternNumbers() {
+            const patterns = document.querySelectorAll('.pattern-block');
+            patterns.forEach((pattern, index) => {
+                const header = pattern.querySelector('.pattern-header span');
+                header.textContent = `Pattern ${index + 1}`;
+            });
+        }
+
+        function movePatternUp(button) {
+            const patternBlock = button.closest('.pattern-block');
+            const prevPattern = patternBlock.previousElementSibling;
+            if (prevPattern) {
+                patternBlock.parentNode.insertBefore(patternBlock, prevPattern);
+                updatePatternNumbers();
+            }
+        }
+
+        function movePatternDown(button) {
+            const patternBlock = button.closest('.pattern-block');
+            const nextPattern = patternBlock.nextElementSibling;
+            if (nextPattern) {
+                patternBlock.parentNode.insertBefore(nextPattern, patternBlock);
+                updatePatternNumbers();
+            }
+        }
+
+        function duplicatePattern(button) {
+            const patternBlock = button.closest('.pattern-block');
+            const clone = patternBlock.cloneNode(true);
+            patternBlock.parentNode.insertBefore(clone, patternBlock.nextSibling);
+            patternCount++;
+            updatePatternNumbers();
+        }
+
+        function deletePattern(button) {
+            const container = document.getElementById('patterns-container');
+            const patterns = container.querySelectorAll('.pattern-block');
+            if (patterns.length > 1) {
+                const patternBlock = button.closest('.pattern-block');
+                container.removeChild(patternBlock);
+                patternCount--;
+                updatePatternNumbers();
+            }
+        }
+
+        function moveTrackUp(button) {
+            const trackInput = button.closest('.track-input');
+            const prevTrack = trackInput.previousElementSibling;
+            if (prevTrack) {
+                trackInput.parentNode.insertBefore(trackInput, prevTrack);
+                updateTrackLabels(button.closest('.pattern-block'));
+            }
+        }
+
+        function moveTrackDown(button) {
+            const trackInput = button.closest('.track-input');
+            const nextTrack = trackInput.nextElementSibling;
+            if (nextTrack) {
+                trackInput.parentNode.insertBefore(nextTrack, trackInput);
+                updateTrackLabels(button.closest('.pattern-block'));
+            }
+        }
+
+        function duplicateTrack(button) {
+            const trackInput = button.closest('.track-input');
+            const clone = trackInput.cloneNode(true);
+            trackInput.parentNode.insertBefore(clone, trackInput.nextSibling);
+            updateTrackLabels(button.closest('.pattern-block'));
+        }
+
+        function deleteTrack(button) {
+            const patternBlock = button.closest('.pattern-block');
+            const trackContainer = patternBlock.querySelector('.track-container');
+            const trackInputs = trackContainer.querySelectorAll('.track-input');
+            
+            if (trackInputs.length > 1) {
+                const trackInput = button.closest('.track-input');
+                trackContainer.removeChild(trackInput);
+                updateTrackLabels(patternBlock);
+            }
+        }
+
+        function addTrack(button) {
+            const patternBlock = button.closest('.pattern-block');
+            const trackContainer = patternBlock.querySelector('.track-container');
+            const trackInputs = trackContainer.querySelectorAll('.track-input');
+            const newTrackNum = trackInputs.length + 1;
+            
+            const newTrack = document.createElement('div');
+            newTrack.className = 'track-input';
+            newTrack.innerHTML = `
+                <div class="track-controls">
+                    <button onclick="moveTrackUp(this)">↑</button>
+                    <button onclick="moveTrackDown(this)">↓</button>
+                    <button onclick="duplicateTrack(this)">Copy</button>
+                    <button onclick="deleteTrack(this)">X</button>
+                </div>
+                <label>Track ${newTrackNum}:</label>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                    <input type="text" class="track-pattern" value="" style="width: auto; flex-grow: 1;">
+                    <button onclick="transposeTrack(this, 1)" style="padding: 4px 8px; font-size: 12px; margin: 0; flex-shrink: 0;">(+)</button>
+                    <button onclick="transposeTrack(this, -1)" style="padding: 4px 8px; font-size: 12px; margin: 0; flex-shrink: 0;">(-)</button>
+                </div>
+                <label style="margin-top: 5px;">Duration:</label>
+                <input type="text" class="track-duration" value="4">
+                <label style="margin-top: 5px;">Octave:</label>
+                <select class="track-octave">
+                    <option value="0">C0</option>
+                    <option value="1">C1</option>
+                    <option value="2">C2</option>
+                    <option value="3">C3</option>
+                    <option value="4" selected>C4</option>
+                    <option value="5">C5</option>
+                    <option value="6">C6</option>
+                    <option value="7">C7</option>
+                    <option value="8">C8</option>
+                    <option value="9">C9</option>
+                    <option value="10">C10</option>
+                </select>
+                <label style="margin-top: 5px;">Key:</label>
+                <select class="track-key">
+                    <option value="C" selected>C</option>
+                    <option value="C#">C#</option>
+                    <option value="D">D</option>
+                    <option value="D#">D#</option>
+                    <option value="E">E</option>
+                    <option value="F">F</option>
+                    <option value="F#">F#</option>
+                    <option value="G">G</option>
+                    <option value="G#">G#</option>
+                    <option value="A">A</option>
+                    <option value="A#">A#</option>
+                    <option value="B">B</option>
+                </select>
+                <label style="margin-top: 5px;">Mode:</label>
+                <select class="track-mode">
+                    <option value="Ionian" selected>Ionian</option>
+                    <option value="Dorian">Dorian</option>
+                    <option value="Phrygian">Phrygian</option>
+                    <option value="Lydian">Lydian</option>
+                    <option value="Mixolydian">Mixolydian</option>
+                    <option value="Aeolian">Aeolian</option>
+                    <option value="Locrian">Locrian</option>
+                </select>
+            `;
+            // Set new track's key/mode to pattern default
+            const patternKey = patternBlock.querySelector('.pattern-key').value;
+            const patternMode = patternBlock.querySelector('.pattern-mode').value;
+            newTrack.querySelector('.track-key').value = patternKey;
+            newTrack.querySelector('.track-mode').value = patternMode;
+
+            trackContainer.appendChild(newTrack);
+            updateTrackLabels(patternBlock);
+        }
+
+        function addPattern() {
+            const container = document.getElementById('patterns-container');
+            patternCount++;
+            const newPattern = document.createElement('div');
+            newPattern.className = 'pattern-block';
+            newPattern.setAttribute('data-pattern-id', patternCount - 1); // 0-indexed
+            newPattern.innerHTML = `
+                <div class="pattern-header">
+                    <span>Pattern ${patternCount}</span>
+                    <div class="pattern-controls">
+                        <button onclick="movePatternUp(this)">↑</button>
+                        <button onclick="movePatternDown(this)">↓</button>
+                        <button onclick="duplicatePattern(this)">Copy</button>
+                        <button onclick="deletePattern(this)">X</button>
+                    </div>
+                </div>
+                
+                <div class="track-container" data-tracks="1">
+                    <div class="track-input">
+                        <div class="track-controls">
+                            <button onclick="moveTrackUp(this)">↑</button>
+                            <button onclick="moveTrackDown(this)">↓</button>
+                            <button onclick="duplicateTrack(this)">Copy</button>
+                            <button onclick="deleteTrack(this)">X</button>
+                        </div>
+                        <label>Track 1:</label>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <input type="text" class="track-pattern" value="" style="width: auto; flex-grow: 1;">
+                            <button onclick="transposeTrack(this, 1)" style="padding: 4px 8px; font-size: 12px; margin: 0; flex-shrink: 0;">(+)</button>
+                            <button onclick="transposeTrack(this, -1)" style="padding: 4px 8px; font-size: 12px; margin: 0; flex-shrink: 0;">(-)</button>
+                        </div>
+                        <label style="margin-top: 5px;">Duration:</label>
+                        <input type="text" class="track-duration" value="4">
+                        <label style="margin-top: 5px;">Octave:</label>
+                        <select class="track-octave">
+                            <option value="0">C0</option>
+                            <option value="1">C1</option>
+                            <option value="2">C2</option>
+                            <option value="3">C3</option>
+                            <option value="4" selected>C4</option>
+                            <option value="5">C5</option>
+                            <option value="6">C6</option>
+                            <option value="7">C7</option>
+                            <option value="8">C8</option>
+                            <option value="9">C9</option>
+                            <option value="10">C10</option>
+                        </select>
+                        <label style="margin-top: 5px;">Key:</label>
+                        <select class="track-key">
+                            <option value="C" selected>C</option>
+                            <option value="C#">C#</option>
+                            <option value="D">D</option>
+                            <option value="D#">D#</option>
+                            <option value="E">E</option>
+                            <option value="F">F</option>
+                            <option value="F#">F#</option>
+                            <option value="G">G</option>
+                            <option value="G#">G#</option>
+                            <option value="A">A</option>
+                            <option value="A#">A#</option>
+                            <option value="B">B</option>
+                        </select>
+                        <label style="margin-top: 5px;">Mode:</label>
+                        <select class="track-mode">
+                            <option value="Ionian" selected>Ionian</option>
+                            <option value="Dorian">Dorian</option>
+                            <option value="Phrygian">Phrygian</option>
+                            <option value="Lydian">Lydian</option>
+                            <option value="Mixolydian">Mixolydian</option>
+                            <option value="Aeolian">Aeolian</option>
+                            <option value="Locrian">Locrian</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 10px;">
+                    <button class="add-track-btn" onclick="addTrack(this)">Add Track</button>
+                </div>
+
+                <div class="input-group">
+                    <label>Section:</label>
+                    <input type="text" class="section" value="">
+                </div>
+
+                <div class="input-group">
+                    <label>Pattern Key:</label>
+                    <select class="pattern-key" onchange="updateTrackKeys(this)">
+                        <option value="C" selected>C</option>
+                        <option value="C#">C#</option>
+                        <option value="D">D</option>
+                        <option value="D#">D#</option>
+                        <option value="E">E</option>
+                        <option value="F">F</option>
+                        <option value="F#">F#</option>
+                        <option value="G">G</option>
+                        <option value="G#">G#</option>
+                        <option value="A">A</option>
+                        <option value="A#">A#</option>
+                        <option value="B">B</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label>Pattern Mode:</label>
+                    <select class="pattern-mode" onchange="updateTrackKeys(this)">
+                        <option value="Ionian" selected>Ionian</option>
+                        <option value="Dorian">Dorian</option>
+                        <option value="Phrygian">Phrygian</option>
+                        <option value="Lydian">Lydian</option>
+                        <option value="Mixolydian">Mixolydian</option>
+                        <option value="Aeolian">Aeolian</option>
+                        <option value="Locrian">Locrian</option>
+                    </select>
+                </div>
+            `;
+            container.appendChild(newPattern);
+            updatePatternNumbers();
+        }
+
+        function transposeTrack(button, direction) {
+            const input = button.parentElement.querySelector('.track-pattern');
+            const oldPattern = input.value;
+            let newPattern = "";
+            
+            let i = 0;
+            while (i < oldPattern.length) {
+                const char = oldPattern[i];
+                const note = parseInt(char);
+
+                if (!isNaN(note) && note >= 1 && note <= 7) {
+                    // It's a note digit
+                    let newNote = note + direction;
+                    if (newNote > 7) newNote = 1;
+                    if (newNote < 1) newNote = 7;
+                    newPattern += newNote.toString();
+                    
+                    // Check for modifier
+                    if (i + 1 < oldPattern.length && (oldPattern[i + 1] === '+' || oldPattern[i + 1] === '-')) {
+                        newPattern += oldPattern[i + 1]; // Keep modifier
+                        i++; // Skip modifier
+                    }
+                } else {
+                    // It's a '0' or something else. Keep it as is.
+                    newPattern += char;
+                }
+                i++;
+            }
+            
+            input.value = newPattern;
+        }
+
+        function parsePattern(pattern) {
+            const notes = [];
+            let i = 0;
+            while (i < pattern.length) {
+                const digit = pattern[i];
+                let modifier = '';
+                if (i + 1 < pattern.length && (pattern[i + 1] === '+' || pattern[i + 1] === '-')) {
+                    modifier = pattern[i + 1];
+                    i++;
+                }
+                notes.push({ note: parseInt(digit), modifier });
+                i++;
+            }
+            return notes;
+        }
+
+        function gcd(a, b) {
+            return b === 0 ? a : gcd(b, a % b);
+        }
+
+        function lcm(a, b) {
+            return (a * b) / gcd(a, b);
+        }
+
+        function lcmMultiple(numbers) {
+            return numbers.reduce((acc, curr) => lcm(acc, curr), numbers[0]);
+        }
+
+        function transposeNote(note, transposition) {
+            if (note === 0) return 0;
+            const newNote = note + transposition - 1;
+            if (newNote >= 1 && newNote <= 7) {
+                return newNote;
+            }
+            if (newNote > 7) {
+                return newNote - 7;
+            }
+            return newNote + 7;
+        }
+
+        function generateSinglePattern(patternBlock) {
+            const trackContainer = patternBlock.querySelector('.track-container');
+            const trackInputs = trackContainer.querySelectorAll('.track-input');
+            const totalTracks = trackInputs.length;
+            
+            const tracks = [];
+            trackInputs.forEach((input, index) => {
+                const pattern = input.querySelector('.track-pattern').value;
+                const duration = input.querySelector('.track-duration').value;
+                const octave = parseInt(input.querySelector('.track-octave').value);
+                const key = input.querySelector('.track-key').value;
+                const mode = input.querySelector('.track-mode').value;
+                
+                tracks.push({
+                    pattern: parsePattern(pattern),
+                    duration: parseFloat(duration),
+                    octave: octave,
+                    key: key,
+                    mode: mode
+                });
+            });
+
+            // Filter out tracks with no duration or no pattern
+            const validTracks = tracks.filter(t => t.duration > 0 && t.pattern.length > 0);
+            if (validTracks.length === 0) {
+                return { sectionPattern: [], expandedTracks: [], previewText: "No valid tracks in this pattern.\n" };
+            }
+
+            const trackDurations = validTracks.map(t => t.pattern.length / t.duration);
+            
+            const sectionDuration = lcmMultiple(trackDurations.map(d => {
+                const denominator = 12; // Use a common denominator to handle floats
+                return Math.round(d * denominator);
+            })) / 12;
+
+            const expandedTracks = validTracks.map((track) => {
+                const expanded = [];
+                const trackDuration = track.pattern.length / track.duration;
+                // Handle potential division by zero if trackDuration is 0 (though filtered)
+                const repeats = (trackDuration > 0) ? Math.round(sectionDuration / trackDuration) : 0;
+                for (let r = 0; r < repeats; r++) {
+                    expanded.push(...track.pattern);
+                }
+                return { ...track, expanded };
+            });
+
+            const sectionValue = patternBlock.querySelector('.section').value;
+            const sectionPattern = sectionValue ? parsePattern(sectionValue) : [{ note: 1, modifier: '' }];
+
+            let previewText = '';
+
+            sectionPattern.forEach(sectionNote => {
+                const transposition = sectionNote.modifier === '+' ? sectionNote.note + 7 : 
+                                     sectionNote.modifier === '-' ? sectionNote.note - 7 : 
+                                     sectionNote.note;
+
+                expandedTracks.forEach((track, trackIndex) => {
+                    let trackPreview = `Track ${trackIndex + 1}: `; // Use index from valid tracks
+                    track.expanded.forEach(noteObj => {
+                        let transposedNote = transposeNote(noteObj.note, transposition);
+                        if (transposedNote === 0) {
+                            trackPreview += '0';
+                        } else {
+                            trackPreview += transposedNote + noteObj.modifier;
+                        }
+                    });
+                    previewText += trackPreview + '\n';
+                });
+                previewText += '\n';
+            });
+
+            return { sectionPattern, expandedTracks, previewText };
+        }
+
+        function previewASCII() {
+            const patternBlocks = document.querySelectorAll('.pattern-block');
+            let fullPreview = '';
+            
+            patternBlocks.forEach((block, index) => {
+                fullPreview += `Pattern ${index + 1}:\n`;
+                const { previewText } = generateSinglePattern(block);
+                fullPreview += previewText + '\n';
+            });
+
+            const previewDiv = document.getElementById('preview');
+            previewDiv.textContent = fullPreview;
+        }
+
+        function generateMIDI() {
+            const bpm = parseInt(document.getElementById('tempo').value);
+            const microsecondsPerBeat = 60000000 / bpm;
+            const ticksPerBeat = 480;
+
+            const patternBlocks = document.querySelectorAll('.pattern-block');
+            
+            let maxTracks = 0;
+            patternBlocks.forEach(block => {
+                const trackCount = block.querySelectorAll('.track-input').length;
+                if (trackCount > maxTracks) maxTracks = trackCount;
+            });
+
+            const midiEvents = [];
+            for (let i = 0; i < maxTracks; i++) {
+                midiEvents.push([]);
+            }
+
+            const currentTime = new Array(maxTracks).fill(0);
+            
+            patternBlocks.forEach((block) => {
+                const { sectionPattern, expandedTracks } = generateSinglePattern(block);
+                const trackCount = expandedTracks.length;
+
+                sectionPattern.forEach(sectionNote => {
+                    const transposition = sectionNote.modifier === '+' ? sectionNote.note + 7 : 
+                                         sectionNote.modifier === '-' ? sectionNote.note - 7 : 
+                                         sectionNote.note;
+
+                    expandedTracks.forEach((track, trackIndex) => {
+                        track.expanded.forEach(noteObj => {
+                            const noteDuration = (ticksPerBeat * 4) / track.duration;
+
+                            if (noteObj.note === 0) {
+                                currentTime[trackIndex] += noteDuration;
+                            } else {
+                                let transposedNote = transposeNote(noteObj.note, transposition);
+                                let octaveOffset = track.octave;
+
+                                if (noteObj.modifier === '+') octaveOffset++;
+                                if (noteObj.modifier === '-') octaveOffset--;
+
+                                const keyOffset = keys.indexOf(track.key);
+                                const scale = modes[track.mode];
+                                const baseMidiNote = 12 + (octaveOffset * 12) + keyOffset;
+                                const midiNote = baseMidiNote + scale[transposedNote - 1];
+
+                                midiEvents[trackIndex].push({
+                                    time: currentTime[trackIndex],
+                                    type: 'noteOn',
+                                    note: midiNote,
+                                    velocity: 80,
+                                    channel: trackIndex
+                                });
+
+                                midiEvents[trackIndex].push({
+                                    time: currentTime[trackIndex] + noteDuration,
+                                    type: 'noteOff',
+                                    note: midiNote,
+                                    velocity: 0,
+                                    channel: trackIndex
+                                });
+
+                                currentTime[trackIndex] += noteDuration;
+                            }
+                        });
+                    });
+                });
+
+                const maxTime = Math.max(...currentTime.slice(0, trackCount));
+                for (let i = 0; i < trackCount; i++) {
+                    currentTime[i] = maxTime;
+                }
+            });
+
+            midiData = createMIDIFile(midiEvents, ticksPerBeat, microsecondsPerBeat);
+            document.getElementById('downloadBtn').disabled = false;
+            
+            const blob = new Blob([midiData], { type: 'audio/midi' });
+            const url = URL.createObjectURL(blob);
+            
+            const player = document.getElementById('midiPlayer');
+            player.src = url;
+            const visualizer = document.getElementById('myPianoRollVisualizer');
+            visualizer.src = url;
+            document.getElementById('player-container').style.display = 'block';
+            
+            if (asciiVisible) {
+                previewASCII();
+            }
+        }
+
+        function createMIDIFile(trackEvents, ticksPerBeat, microsecondsPerBeat) {
+            function writeVarLen(value) {
+                const bytes = [];
+                bytes.push(value & 0x7f);
+                value >>= 7;
+                while (value > 0) {
+                    bytes.unshift((value & 0x7f) | 0x80);
+                    value >>= 7;
+                }
+                return bytes;
+            }
+
+            const numTracks = trackEvents.length + 1;
+
+            const header = [
+                0x4d, 0x54, 0x68, 0x64,
+                0x00, 0x00, 0x00, 0x06,
+                0x00, 0x01,
+                (numTracks >> 8) & 0xff, numTracks & 0xff,
+                (ticksPerBeat >> 8) & 0xff, ticksPerBeat & 0xff
+            ];
+
+            const tempoEvent = [
+                0x00, 0xff, 0x51, 0x03,
+                (microsecondsPerBeat >> 16) & 0xff,
+                (microsecondsPerBeat >> 8) & 0xff,
+                microsecondsPerBeat & 0xff
+            ];
+
+            const tracks = [];
+
+            trackEvents.forEach((events, trackIndex) => {
+                const trackData = [...tempoEvent];
+                
+                const programChange = [0x00, 0xc0 | trackIndex, 0x04]; // 0x04 is Electric Piano
+                trackData.push(...programChange);
+
+                events.sort((a, b) => a.time - b.time);
+
+                let lastTime = 0;
+                events.forEach(event => {
+                    const deltaTime = Math.round(event.time - lastTime);
+                    trackData.push(...writeVarLen(deltaTime));
+
+                    if (event.type === 'noteOn') {
+                        trackData.push(0x90 | trackIndex, event.note, event.velocity);
+                    } else {
+                        trackData.push(0x80 | trackIndex, event.note, event.velocity);
+                    }
+
+                    lastTime = event.time;
+                });
+
+                trackData.push(0x00, 0xff, 0x2f, 0x00); // End of Track
+
+                const trackHeader = [
+                    0x4d, 0x54, 0x72, 0x6b,
+                    (trackData.length >> 24) & 0xff,
+                    (trackData.length >> 16) & 0xff,
+                    (trackData.length >> 8) & 0xff,
+                    trackData.length & 0xff
+                ];
+
+                tracks.push([...trackHeader, ...trackData]);
+            });
+
+            // Add an empty "conductor" track (good practice)
+            const emptyTrack = [0x00, 0xff, 0x2f, 0x00]; // End of Track
+            const emptyTrackHeader = [
+                0x4d, 0x54, 0x72, 0x6b,
+                0x00, 0x00, 0x00, emptyTrack.length
+            ];
+            tracks.push([...emptyTrackHeader, ...emptyTrack]);
+
+            return new Uint8Array([...header, ...tracks.flat()]);
+        }
+
+        function downloadMIDI() {
+            if (!midiData) return;
+
+            const filename = document.getElementById('filename').value || 'pattern';
+            const blob = new Blob([midiData], { type: 'audio/midi' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename + '.mid';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function exportToTxt() {
+            let content = "";
+            content += `Tempo: ${document.getElementById('tempo').value}\n`;
+            content += `FileName: ${document.getElementById('filename').value}\n`;
+
+            const patternBlocks = document.querySelectorAll('.pattern-block');
+            patternBlocks.forEach((pattern, index) => {
+                content += "---PatternStart---\n";
+                content += `PatternKey: ${pattern.querySelector('.pattern-key').value}\n`;
+                content += `PatternMode: ${pattern.querySelector('.pattern-mode').value}\n`;
+                content += `Section: ${pattern.querySelector('.section').value}\n`;
+
+                const trackInputs = pattern.querySelectorAll('.track-input');
+                trackInputs.forEach((track, trackIndex) => {
+                    content += "---TrackStart---\n";
+                    content += `TrackPattern: ${track.querySelector('.track-pattern').value}\n`;
+                    content += `TrackDuration: ${track.querySelector('.track-duration').value}\n`;
+                    content += `TrackOctave: ${track.querySelector('.track-octave').value}\n`;
+                    content += `TrackKey: ${track.querySelector('.track-key').value}\n`;
+                    content += `TrackMode: ${track.querySelector('.track-mode').value}\n`;
+                });
+                content += "---PatternEnd---\n";
+            });
+
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (document.getElementById('filename').value || 'pattern') + '.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importFromTxt(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const text = e.target.result;
+                    const lines = text.split('\n');
+                    
+                    const container = document.getElementById('patterns-container');
+                    container.innerHTML = ''; // Clear existing patterns
+                    patternCount = 0;
+                    
+                    let currentPatternBlock = null;
+                    let currentTrackInput = null;
+
+                    lines.forEach(line => {
+                        if (line.trim() === "") return;
+
+                        const parts = line.split(':');
+                        const key = parts[0];
+                        const value = parts.slice(1).join(':').trim(); // Handle values with colons
+
+                        switch(key) {
+                            case 'Tempo':
+                                document.getElementById('tempo').value = value;
+                                break;
+                            case 'FileName':
+                                document.getElementById('filename').value = value;
+                                break;
+                            case '---PatternStart---':
+                                addPattern(); // Adds a new pattern block
+                                currentPatternBlock = container.lastElementChild;
+                                // Clear the default track added by addPattern()
+                                currentPatternBlock.querySelector('.track-container').innerHTML = '';
+                                break;
+                            case 'PatternKey':
+                                if (currentPatternBlock) currentPatternBlock.querySelector('.pattern-key').value = value;
+                                break;
+                            case 'PatternMode':
+                                if (currentPatternBlock) currentPatternBlock.querySelector('.pattern-mode').value = value;
+                                break;
+                            case 'Section':
+                                if (currentPatternBlock) currentPatternBlock.querySelector('.section').value = value;
+                                break;
+                            case '---TrackStart---':
+                                if (currentPatternBlock) {
+                                    // Add a new track and get its element
+                                    addTrack(currentPatternBlock.querySelector('.add-track-btn'));
+                                    currentTrackInput = currentPatternBlock.querySelector('.track-container').lastElementChild;
+                                }
+                                break;
+                            case 'TrackPattern':
+                                if (currentTrackInput) currentTrackInput.querySelector('.track-pattern').value = value;
+                                break;
+                            case 'TrackDuration':
+                                if (currentTrackInput) currentTrackInput.querySelector('.track-duration').value = value;
+                                break;
+                            case 'TrackOctave':
+                                if (currentTrackInput) currentTrackInput.querySelector('.track-octave').value = value;
+                                break;
+                            case 'TrackKey':
+                                if (currentTrackInput) currentTrackInput.querySelector('.track-key').value = value;
+                                break;
+                            case 'TrackMode':
+                                if (currentTrackInput) currentTrackInput.querySelector('.track-mode').value = value;
+                                break;
+                            case '---PatternEnd---':
+                                currentPatternBlock = null;
+                                currentTrackInput = null;
+                                break;
+                        }
+                    });
+                    
+                    updatePatternNumbers();
+                    updateAllTrackLabels();
+                } catch (error) {
+                    console.error("Error importing file:", error);
+                    // Handle error, e.g., show a message to the user
+                }
+            };
+            reader.readAsText(file);
+
+            // Reset file input so opening the same file again triggers onchange
+            event.target.value = null;
+        }
+
+    </script>
+</body>
+</html>
